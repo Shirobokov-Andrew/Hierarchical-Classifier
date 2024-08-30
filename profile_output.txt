@@ -1,0 +1,103 @@
+Timer unit: 1e-09 s
+
+Total time: 13.7363 s
+File: /home/vk/samokat/hierarchical_classifier.py
+Function: predict at line 76
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    76                                               @line_profiler.profile
+    77                                               def predict(self, X):
+    78                                                   """
+    79                                                   Предсказание иерархического классификатора.
+    80                                           
+    81                                                   :param X: Тексты.
+    82                                                   :return: Предсказанные метки классов (Cat1, Cat2, Cat3).
+    83                                                   """
+    84                                                   # Сначала предсказывается Cat1 для всех объектов X
+    85         1  520679075.0    5e+08      3.8          y_pred_cat1 = self.model_cat1.predict(X)
+    86                                                   # Массивы для предсказаний Cat2, Cat3 для всех объектов X
+    87         1        337.0    337.0      0.0          y_pred_cat2 = []
+    88         1        234.0    234.0      0.0          y_pred_cat3 = []
+    89                                           
+    90                                                   # Предсказание Cat2 и Cat3 на основе предсказанных Cat1
+    91      9870    8468378.0    858.0      0.1          for i, cat1 in enumerate(y_pred_cat1):
+    92                                                       # На основе предсказанной Cat1 предсказываем Cat2
+    93      9869 6657627552.0 674600.0     48.5              cat2_pred = self.models_cat2[cat1].predict([X[i]])[0]
+    94      9869    7419511.0    751.8      0.1              y_pred_cat2.append(cat2_pred)
+    95                                           
+    96                                                       # На основе предсказанных Cat1 и Cat2 предсказываем Cat3
+    97      9869 6529994853.0 661667.3     47.5              cat3_pred = self.models_cat3[(cat1, cat2_pred)].predict([X[i]])[0]
+    98      9869    8102692.0    821.0      0.1              y_pred_cat3.append(cat3_pred)
+    99                                           
+   100         1    1082556.0    1e+06      0.0          y_pred_cat2 = np.array(y_pred_cat2)
+   101         1    1312119.0    1e+06      0.0          y_pred_cat3 = np.array(y_pred_cat3)
+   102                                           
+   103         1    1639691.0    2e+06      0.0          return np.column_stack((y_pred_cat1, y_pred_cat2, y_pred_cat3))
+
+Total time: 39.368 s
+File: /home/vk/samokat/hierarchical_classifier.py
+Function: fit at line 30
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    30                                               @line_profiler.profile
+    31                                               def fit(self, X, y):
+    32                                                   """
+    33                                                   Обучение иерархического классификатора.
+    34                                                   :param X: Тексты
+    35                                                   :param y: np.array иерархических меток классов (Cat1, Cat2, Cat3).
+    36                                                   """
+    37                                                   # Обучаем классификатор для Cat1
+    38         2      15647.0   7823.5      0.0          self.model_cat1 = Pipeline([
+    39         1      49274.0  49274.0      0.0              ('tf-idf', TfidfVectorizer(max_features=10000)),
+    40         1      31596.0  31596.0      0.0              ('clf', self.base_classifier(**self.classifier_kwargs))
+    41                                                   ])
+    42         1 8522732703.0    9e+09     21.6          self.model_cat1.fit(X, y[:, 0])
+    43                                           
+    44                                                   # Обучаем классификаторы для Cat2 - проходимся по всем уникальным значениям Cat1
+    45         7   28440452.0    4e+06      0.1          for cat1 in np.unique(y[:, 0]):
+    46                                                       # выбираем объекты, которые имеют данную Cat1, чтобы предсказать им Cat2
+    47         6    6112665.0    1e+06      0.0              cat_indices = (y[:, 0] == cat1)
+    48                                                       # обучаем соответствующую модель
+    49        12      50840.0   4236.7      0.0              self.models_cat2[cat1] = Pipeline([
+    50         6     229990.0  38331.7      0.0                  ('tf-idf', TfidfVectorizer(max_features=10000)),
+    51         6      92953.0  15492.2      0.0                  ('clf', self.base_classifier(**self.classifier_kwargs))
+    52                                                       ])
+    53         6        1e+10    2e+09     32.6              self.models_cat2[cat1].fit(X[cat_indices], y[cat_indices, 1])
+    54                                           
+    55                                                   # Обучаем классификаторы для Cat3 - проходимся по всевозможным парам (Cat1, Cat2)
+    56         7   15088215.0    2e+06      0.0          for cat1 in np.unique(y[:, 0]):
+    57        70   29120033.0 416000.5      0.1              for cat2 in np.unique(y[y[:, 0] == cat1, 1]):
+    58                                                           # выбираем объекты, которые имеют данные (Cat1, Cat2), чтобы предсказать им Cat3
+    59        64  118007189.0    2e+06      0.3                  cat_indices = (y[:, 0] == cat1) & (y[:, 1] == cat2)
+    60        64   30320880.0 473763.8      0.1                  unique_cat3 = np.unique(y[cat_indices, 2])
+    61                                                           # Случай, когда для данной пары (Cat1, Cat2) оказывается всего один возможный Cat3 - в этом случае
+    62                                                           # с помощью DummyClassifier просто предсказываем этот самый Cat3
+    63        64      51407.0    803.2      0.0                  if len(unique_cat3) < 2:
+    64         6      12071.0   2011.8      0.0                      self.models_cat3[(cat1, cat2)] = Pipeline([
+    65         3      62193.0  20731.0      0.0                          ('tf-idf', TfidfVectorizer(max_features=10000)),
+    66         3      60838.0  20279.3      0.0                          ('clf', DummyClassifier(strategy='most_frequent'))
+    67                                                               ])
+    68         3   93654567.0    3e+07      0.2                      self.models_cat3[(cat1, cat2)].fit(X[cat_indices], y[cat_indices, 2])
+    69                                                           else:
+    70       122     262490.0   2151.6      0.0                      self.models_cat3[(cat1, cat2)] = Pipeline([
+    71        61    1372286.0  22496.5      0.0                          ('tf-idf', TfidfVectorizer(max_features=10000)),
+    72        61     525300.0   8611.5      0.0                          ('clf', self.base_classifier(**self.classifier_kwargs))
+    73                                                               ])
+    74        61        2e+10    3e+08     44.9                      self.models_cat3[(cat1, cat2)].fit(X[cat_indices], y[cat_indices, 2])
+
+Total time: 166.661 s
+File: /home/vk/samokat/main.py
+Function: test_flat_classifier at line 11
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    11                                           @line_profiler.profile
+    12                                           def test_flat_classifier(train_df, test_df, classifier):
+    13         1        2e+11    2e+11     99.6      _ = classifier.fit(train_df['Text'], train_df['Cat1Cat2Cat3'])
+    14         1  587644508.0    6e+08      0.4      y_predicted_flat_logreg = classifier.predict(test_df['Text'])
+
+ 13.74 seconds - /home/vk/samokat/hierarchical_classifier.py:76 - predict
+ 39.37 seconds - /home/vk/samokat/hierarchical_classifier.py:30 - fit
+166.66 seconds - /home/vk/samokat/main.py:11 - test_flat_classifier
