@@ -1,23 +1,23 @@
-# У себя я использовал python версии 3.11, поэтому и здесь указал его же
+# I used python version 3.11, so I put it here too
 FROM python:3.11-slim
 
-# Устанавливаем зависимости для операционной системы
+# Installing dependencies for the operating system
 RUN apt-get update && apt-get install -y \
     build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем рабочую директорию
+# Set the working directory
 WORKDIR /app
 
-# Копируем файл с зависимостями
+# Copy the file with dependencies
 COPY requirements.txt .
 
-# Устанавливаем Python-зависимости
+# Installing Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем файлы приложения в контейнер
+# Copying application files to the container
 COPY . .
 
-# Команда запуска uvicorn при старте контейнера
+# Command to run uvicorn when container starts
 CMD ["uvicorn", "classifier_fast_api:app", "--host", "0.0.0.0", "--port", "8000"]

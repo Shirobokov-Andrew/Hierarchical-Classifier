@@ -4,32 +4,32 @@ import joblib
 from hierarchical_classifier import HierarchicalClassifier
 import numpy as np
 
-# Создаем объект FastAPI
+# Create a FastAPI object
 app = FastAPI()
 
-# Загружаем предобученную модель
+# Loading the pre-trained model
 model = joblib.load('hierarchical_logreg_cls_model.pkl')
 
 
-# Модель для входных данных
+# Model for input data
 class Review(BaseModel):
     text: str
 
 
-# Главная страница для проверки, что сервис работает
+# Home page to check if the service is working
 @app.get("/")
 def read_root():
     return {"message": "Hierarchical Classification API"}
 
 
-# Предсказанеи категории по тексту
+# Predicting category from text
 @app.post("/predict/")
 def predict_category(review: Review):
     try:
-        # Получаем текст из запроса
+        # Getting text from request
         text = review.text
 
-        # Предсказываем с помощью загруженной модели
+        # Predict using the loaded model
         prediction = model.predict([text])
         print('Предсказания успешно выполнены!')
 
@@ -39,6 +39,6 @@ def predict_category(review: Review):
             "Cat3": prediction[0][2]
         }
     except Exception as e:
-        # В случае ошибки возвращаем HTTP 500 и сообщение об ошибке
+        # In case of an error, we return HTTP 500 and an error message
         raise HTTPException(status_code=500, detail=str(e))
 

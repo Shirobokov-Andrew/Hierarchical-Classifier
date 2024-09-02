@@ -11,56 +11,56 @@ import joblib
 class HierarchicalClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, base_classifier=LogisticRegression, **classifier_kwargs):
         """
-        Инициализация иерархического классификатора.
-        Данный классификатор работает следующим образом:
+        Initialization of the hierarchical classifier.
+        This classifier works as follows:
         P(Cat1, Cat2, Cat3) = P(Cat3 | Cat1, Cat2) * P(Cat2 | Cat1) * P(Cat1),
-        где каждое из вероятностных распределений моделируется одной моделью-классификатором base_classifier.
-        Для векторизации текстов используется TfidfVectorizer.
-        :param base_classifier: Базовый классификатор sklearn
-        :param classifier_kwargs: параметры для базового классификатора (для каждого свои)
+        where each of the probability distributions is modeled by one classifier model base_classifier.
+        TfidfVectorizer is used for text vectorization.
+        :param base_classifier: Base Sklearn classifier
+        :param classifier_kwargs: parameters for the base classifier (each has its own)
         """
         self.base_classifier = base_classifier
         self.classifier_kwargs = classifier_kwargs
-        # Для предсказания Cat1 нам достаточно одной модели
+        # To predict Cat1 we only need one model
         self.model_cat1 = None
-        # Для предсказаний Cat2 используется множество моделей, чтобы предсказать Cat2 при данном Cat1
+        # For Cat2 predictions, multiple models are used to predict Cat2 given Cat1
         self.models_cat2 = {}
-        # Для предсказаний Cat3 используется множество моделей, чтобы предсказать Cat3 при данном (Cat1, Cat2)
+        # For Cat3 predictions, multiple models are used to predict Cat3 given (Cat1, Cat2)
         self.models_cat3 = {}
 
     @line_profiler.profile
     def fit(self, X, y):
         """
-        Обучение иерархического классификатора.
-        :param X: Тексты
-        :param y: np.array иерархических меток классов (Cat1, Cat2, Cat3).
+        Training a hierarchical classifier.
+        :param X: Texts
+        :param y: np.array of hierarchical class labels (Cat1, Cat2, Cat3).
         """
-        # Обучаем классификатор для Cat1
+        # Training a classifier for Cat1
         self.model_cat1 = Pipeline([
             ('tf-idf', TfidfVectorizer(max_features=10000)),
             ('clf', self.base_classifier(**self.classifier_kwargs))
         ])
         self.model_cat1.fit(X, y[:, 0])
 
-        # Обучаем классификаторы для Cat2 - проходимся по всем уникальным значениям Cat1
+        # Training classifiers for Cat2 - going through all unique values of Cat1
         for cat1 in np.unique(y[:, 0]):
-            # выбираем объекты, которые имеют данную Cat1, чтобы предсказать им Cat2
+            # select objects that have a given Cat1 to predict Cat2 for them
             cat_indices = (y[:, 0] == cat1)
-            # обучаем соответствующую модель
+            # train the corresponding model
             self.models_cat2[cat1] = Pipeline([
                 ('tf-idf', TfidfVectorizer(max_features=10000)),
                 ('clf', self.base_classifier(**self.classifier_kwargs))
             ])
             self.models_cat2[cat1].fit(X[cat_indices], y[cat_indices, 1])
 
-        # Обучаем классификаторы для Cat3 - проходимся по всевозможным парам (Cat1, Cat2)
+        # Training classifiers for Cat3 - going through all sorts of pairs (Cat1, Cat2)
         for cat1 in np.unique(y[:, 0]):
             for cat2 in np.unique(y[y[:, 0] == cat1, 1]):
-                # выбираем объекты, которые имеют данные (Cat1, Cat2), чтобы предсказать им Cat3
+                # select objects that have data (Cat1, Cat2) to predict Cat3 for them
                 cat_indices = (y[:, 0] == cat1) & (y[:, 1] == cat2)
                 unique_cat3 = np.unique(y[cat_indices, 2])
-                # Случай, когда для данной пары (Cat1, Cat2) оказывается всего один возможный Cat3 - в этом случае
-                # с помощью DummyClassifier просто предсказываем этот самый Cat3
+                # The case when for a given pair (Cat1, Cat2) there is only one possible Cat3 - in this case
+                # using DummyClassifier we simply predict this Cat3
                 if len(unique_cat3) < 2:
                     self.models_cat3[(cat1, cat2)] = Pipeline([
                         ('tf-idf', TfidfVectorizer(max_features=10000)),
@@ -76,19 +76,19 @@ class HierarchicalClassifier(BaseEstimator, ClassifierMixin):
 
     def predict(self, X):
         """
-        Предсказание с помощью иерархического классификатора.
-        :param X: Тексты.
-        :return: Предсказанные метки классов (Cat1, Cat2, Cat3).
+        Prediction using a hierarchical classifier.
+        :param X: Texts
+        :return: Predicted class labels (Cat1, Cat2, Cat3).
         """
-        # Сначала предсказывается Cat1 для всех объектов X
+        # First, Cat1 is predicted for all objects from X
         y_pred_cat1 = self.model_cat1.predict(X)
-        # Массивы для предсказаний Cat2, Cat3 для всех объектов X
+        # Arrays for predictions Cat2, Cat3 for all objects from X
         y_pred_cat2 = []
         y_pred_cat3 = []
 
-        # Предсказание Cat2 и Cat3 на основе предсказанных Cat1
+        # Predict Cat2 and Cat3 based on predicted Cat1
         for i, cat1 in enumerate(y_pred_cat1):
-            # На основе предсказанной Cat1 предсказываем Cat2
+            # Based on predicted Cat1 we predict Cat2
             cat2_pred = self.models_cat2[cat1].predict([X[i]])[0]
             y_pred_cat2.append(cat2_pred)
 
@@ -103,19 +103,19 @@ class HierarchicalClassifier(BaseEstimator, ClassifierMixin):
 
     def save_model(self, filename):
         """
-        Сохранение модели в файл.
-        :param filename: имя файла, в котором будет сохранена модель
+        Saving the model to a file.
+        :param filename: the name of the file in which the model will be saved
         """
         joblib.dump(self, filename)
-        print(f"Модель сохранена в {filename}!")
+        print(f"The model was saved in {filename}!")
 
     @staticmethod
     def load_model(filename):
         """
-        Загрузка модели из файла
-        :param filename: имя файла, из которого модель будет загружена
-        :return: загруженная модель
+        Loading a model from a file
+        :param filename: the name of the file from which the model will be loaded
+        :return: loaded model
         """
         model = joblib.load(filename)
-        print(f"Модель загружена из {filename}!")
+        print(f"Model loaded from {filename}!")
         return model
